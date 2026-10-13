@@ -1,11 +1,12 @@
 # Chapter 1 — C# fundamentals and OOP
 
-> **Days:** 1–3 · **Status:** Notes ready, quiz pending
+> **Days:** 1–3 · **Status:** Notes, code, quiz and exercises ready · learner has not taken the quiz yet
 >
 > **Interview target:** Explain each concept with a small code example and spot common mistakes.
 
 ## Topics in this chapter
 
+0. *(Prerequisite)* C# syntax you need: if/else, switch, loops, is/as, reading errors, debugging
 1. Types, variables, casting and type conversions
 2. var vs dynamic vs object
 3. Value types vs reference types (stack, heap, copying)
@@ -49,8 +50,9 @@ All code in this chapter is also in a runnable project: `chapters/01-csharp-fund
 
 ```bash
 cd chapters/01-csharp-fundamentals-oop/code/Chapter01
-dotnet run          # runs all 18 topics
+dotnet run          # runs all topics (0 to 18)
 dotnet run -- 3     # runs only topic 3
+dotnet run -- 99    # an unknown topic prints the list of valid topic numbers
 ```
 
 The project file (`Chapter01.csproj`). It tells .NET what kind of program this is:
@@ -78,6 +80,7 @@ using Chapter01.Topics;
 
 var demos = new Dictionary<int, (string Title, Action Run)>
 {
+    [0] = ("C# syntax you need: if, switch, loops, is/as", T00_SyntaxBasics.Run),
     [1] = ("Types, variables, casting and type conversions", T01_TypesAndConversions.Run),
     [2] = ("var vs dynamic vs object", T02_VarDynamicObject.Run),
     [3] = ("Value types vs reference types", T03_ValueVsReference.Run),
@@ -98,15 +101,17 @@ var demos = new Dictionary<int, (string Title, Action Run)>
     [18] = ("Boxing and unboxing", T18_BoxingUnboxing.Run),
 };
 
-if (args.Length > 0 && int.TryParse(args[0], out var topic) && demos.TryGetValue(topic, out var demo))
+if (args.Length > 0)
 {
-    Print(topic, demo);
+    if (int.TryParse(args[0], out var topic) && demos.TryGetValue(topic, out var demo))
+        Print(topic, demo);
+    else
+        Console.WriteLine($"Unknown topic '{args[0]}'. Valid topics: {string.Join(", ", demos.Keys)}");
+    return;
 }
-else
-{
-    foreach (var (number, d) in demos)
-        Print(number, d);
-}
+
+foreach (var (number, d) in demos)
+    Print(number, d);
 
 static void Print(int number, (string Title, Action Run) demo)
 {
@@ -121,6 +126,207 @@ Don't worry if `Dictionary`, `Action` or the `(string Title, Action Run)` syntax
 > **Two syntax bits used everywhere below:**
 > - `$"Hello {name}"` is **string interpolation**: anything inside `{ }` is replaced with its value.
 > - `int Square(int x) => x * x;` is an **expression-bodied member**: a short way to write a method whose body is a single expression. It is the same as `int Square(int x) { return x * x; }`.
+
+## How to read these notes: rule vs behaviour vs advice
+
+Every claim in these notes is one of three kinds. Knowing which kind matters in interviews, because senior interviewers probe the edge cases.
+
+| Kind | Meaning | Example |
+|---|---|---|
+| **Language rule** | Guaranteed by the C# specification. Always true. | `var` is resolved at compile time. |
+| **Runtime behaviour** | What .NET actually does today. True in practice, but it can depend on the runtime version, 64-bit vs 32-bit, or optimisations. | A boxed `int` takes 24 bytes on 64-bit .NET. |
+| **Design guidance** | Good advice that has exceptions. | Keep structs small and immutable. |
+
+Where it matters, the notes say which one it is.
+
+---
+
+## 1.0 (Prerequisite) C# syntax you need: if/else, switch, loops, is/as, reading errors, debugging
+
+### What it is
+
+The basic building blocks that every example in this course uses. If you write C# every day, skim this in ten minutes. If you're rusty, run the code and read it carefully.
+
+| Building block | What it does |
+|---|---|
+| **Statement** | One instruction, ending with `;`. Example: `decimal cartTotal = 2400m;` |
+| **Expression** | Anything that **produces a value**. Example: `cartTotal >= 500` produces `true` or `false`. |
+| **Method call** | Runs a named block of code. Example: `Console.WriteLine("...")` |
+| `if` / `else if` / `else` | Run code only when a condition is true |
+| `switch` | Pick one branch out of many, based on a value |
+| `for` | Repeat with a counter (when you need the position/index) |
+| `foreach` | Repeat once for every item in a collection |
+| `while` | Repeat as long as a condition stays true |
+| `break` / `continue` | Stop the loop / skip to the next item |
+| `&&`, `||`, `!` | AND, OR, NOT |
+| `==`, `!=`, `<`, `>`, `<=`, `>=` | Comparisons |
+| `is` / `as` | Safe type checks (instead of a cast that might crash) |
+
+### Code
+
+The code is an order-processing flow: decide the customer tier, check order status, total the prices, retry an email, and stop when an item needs manual approval.
+
+```csharp
+namespace Chapter01.Topics;
+
+public static class T00_SyntaxBasics
+{
+    public static void Run()
+    {
+        // --- Statements, expressions and method calls ---
+        decimal cartTotal = 2400m;                  // a statement: declares a variable
+        bool freeShipping = cartTotal >= 500;       // 'cartTotal >= 500' is an expression: it produces a value
+        Console.WriteLine($"Cart total {cartTotal}, free shipping? {freeShipping}");   // a method call
+
+        // --- if / else if / else ---
+        string tier;
+        if (cartTotal >= 5000)
+            tier = "Gold";
+        else if (cartTotal >= 2000)
+            tier = "Silver";
+        else
+            tier = "Standard";
+        Console.WriteLine($"Customer tier: {tier}");
+
+        // --- Logical operators: && (and), || (or), ! (not) ---
+        bool isPrimeMember = true;
+        bool alreadyUsedCoupon = false;
+        bool getsDiscount = (isPrimeMember && !alreadyUsedCoupon) || cartTotal > 10_000;
+        Console.WriteLine($"Gets discount? {getsDiscount}");
+
+        // --- switch statement and switch expression ---
+        string status = "Shipped";
+        switch (status)
+        {
+            case "Pending":
+                Console.WriteLine("Waiting for payment");
+                break;
+            case "Shipped":
+                Console.WriteLine("On the way");
+                break;
+            default:
+                Console.WriteLine("Unknown status");
+                break;
+        }
+
+        string eta = status switch
+        {
+            "Pending" => "Not dispatched yet",
+            "Shipped" => "2 days",
+            _ => "Unknown",                         // _ means "anything else"
+        };
+        Console.WriteLine($"ETA: {eta}");
+
+        // --- for: when you need the position (index) ---
+        string[] items = { "Keyboard", "Mouse", "Monitor" };
+        for (int i = 0; i < items.Length; i++)
+            Console.WriteLine($"Line {i + 1}: {items[i]}");
+
+        // --- foreach: when you just need each item ---
+        decimal[] prices = { 1500m, 499m, 12000m };
+        decimal sum = 0;
+        foreach (var price in prices)
+            sum += price;
+        Console.WriteLine($"Sum of prices: {sum}");
+
+        // --- while: repeat until a condition changes (e.g. retrying an email) ---
+        int attempt = 0;
+        bool sent = false;
+        while (!sent && attempt < 3)
+        {
+            attempt++;
+            sent = attempt == 2;                    // pretend the 2nd attempt succeeds
+            Console.WriteLine($"Sending email, attempt {attempt}: {(sent ? "ok" : "failed")}");
+        }
+
+        // --- continue (skip this item) and break (stop the loop) ---
+        foreach (var price in prices)
+        {
+            if (price < 1000)
+                continue;
+            if (price > 10_000)
+            {
+                Console.WriteLine($"High-value item {price} needs manual approval, stopping");
+                break;
+            }
+            Console.WriteLine($"Auto-approved item: {price}");
+        }
+
+        // --- is / as: safe type checks ---
+        object payload = "ORD-1042";
+        if (payload is string orderNumber)          // "if it's a string, call it orderNumber"
+            Console.WriteLine($"payload is a string: {orderNumber}");
+        var asList = payload as List<string>;       // 'as' gives null instead of throwing
+        Console.WriteLine($"payload as List<string> = {(asList is null ? "null" : "a list")}");
+    }
+}
+```
+
+> `string[] items = { ... }` is an **array**: a fixed-size list. `items[i]` reads the item at position `i`, counting from 0. `condition ? a : b` means "if condition, then `a`, else `b`".
+
+**Output:**
+
+```
+Cart total 2400, free shipping? True
+Customer tier: Silver
+Gets discount? True
+On the way
+ETA: 2 days
+Line 1: Keyboard
+Line 2: Mouse
+Line 3: Monitor
+Sum of prices: 13999
+Sending email, attempt 1: failed
+Sending email, attempt 2: ok
+Auto-approved item: 1500
+High-value item 12000 needs manual approval, stopping
+payload is a string: ORD-1042
+payload as List<string> = null
+```
+
+The `while` loop works like this:
+
+```mermaid
+flowchart TD
+    A["attempt = 0, sent = false"] --> B{"!sent && attempt < 3 ?"}
+    B -- yes --> C["attempt++<br/>try sending"]
+    C --> B
+    B -- no --> D["continue after the loop"]
+```
+
+### Reading compiler errors and warnings
+
+When the build fails, the message looks like this:
+
+```
+Topics/T05_Nullable.cs(15,25): warning CS8629: Nullable value type may be null.
+```
+
+- `T05_Nullable.cs(15,25)` is the **file, line 15, column 25**.
+- `warning` or `error`: **errors** stop the build; **warnings** don't, but they usually point at a real bug.
+- `CS8629` is the **error code**. Search it ("CS8629") to find Microsoft's explanation.
+
+### Debugging basics (Visual Studio / VS Code / Rider)
+
+| Action | Key (Visual Studio / VS Code) | What it does |
+|---|---|---|
+| Set a **breakpoint** | `F9` (or click left of the line number) | The program pauses when it reaches this line |
+| Start debugging | `F5` | Runs the program with the debugger attached |
+| **Step over** | `F10` | Run the current line, then pause on the next one |
+| **Step into** | `F11` | Go *inside* the method being called on this line |
+| Step out | `Shift+F11` | Finish the current method and pause in the caller |
+| Inspect values | Hover over a variable, or use the **Locals** / **Watch** windows | See what each variable holds right now |
+
+**Good habit:** when the output surprises you (and some outputs in this chapter will), put a breakpoint on the line and step through it, rather than guessing.
+
+### Interview questions
+
+1. **`for` vs `foreach`?**
+   Use `foreach` when you just need each item (it's clearer and can't go out of bounds). Use `for` when you need the index, or need to step through the items in an unusual way.
+2. **`is` vs `as` vs a cast?**
+   A cast `(string)x` throws `InvalidCastException` if `x` is the wrong type. `as` returns null instead (reference types and nullable types only). `x is string s` checks the type and gives you a typed variable in one step. It's the modern preferred style.
+3. **What's the difference between a statement and an expression?**
+   An expression produces a value (`a + b`, `x > 5`). A statement performs an action (`int x = 5;`, `return;`).
 
 ---
 
@@ -154,20 +360,21 @@ The most common built-in types:
 
 **Type conversion** means turning a value of one type into another type. There are two kinds:
 
-- **Implicit conversion**: happens automatically because no data can be lost. Example: `int` → `long` (a big box can always hold what a small box held).
+- **Implicit conversion**: the compiler allows it **without a cast**, because the target type can hold the whole *range* of the source type. Example: `int` → `long` (a big box can always hold what a small box held). **Careful:** "implicit" means "no cast needed", not always "no data lost". `int` → `float` and `long` → `double` are implicit but can lose **precision** (the last digits) for big numbers.
 - **Explicit conversion (a "cast")**: you must write `(type)` in front, because data **might** be lost. Example: `double` → `int` loses the decimal part.
 
-The arrows below show the **implicit** (automatic, safe) conversions between number types. Going against an arrow needs an explicit cast.
+The arrows below show the **implicit** conversions between common number types (allowed without a cast). Going against an arrow needs an explicit cast. **Dotted arrows are implicit but can lose precision for large values.**
 
 ```mermaid
 flowchart LR
     byte --> short --> int --> long
     int --> double
-    long --> double
     int --> decimal
     long --> decimal
     float --> double
-    int --> float
+    int -. "may lose precision" .-> float
+    long -. "may lose precision" .-> double
+    long -. "may lose precision" .-> float
 ```
 
 ### Why it matters
@@ -177,14 +384,16 @@ flowchart LR
 
 ### How it works
 
-- **Implicit:** `small → bigger` is always safe: `int → long → double`.
+- **Implicit:** `int → long` and `int → double` keep every `int` value exactly. But `int → float` is also implicit, and `float` keeps only about 7 significant digits, so `123456789` silently becomes `123456792` (see the code).
 - **Explicit cast `(int)9.99`:** the decimal part is **cut off (truncated)**, not rounded. The result is `9`, not `10`.
-- **Overflow:** if a number is too big for its type, C# by default **wraps around** silently (like a car odometer rolling over). Wrap it in `checked(...)` to get an `OverflowException` instead.
+- **Overflow:** if the result of integer arithmetic or a cast is too big for its type, then **at runtime, in the default "unchecked" context**, it **wraps around** silently (like a car odometer rolling over). Wrap it in `checked(...)` to get an `OverflowException` instead. Two details:
+  - If the overflow happens in a **constant expression** the compiler can work out (e.g. `int x = int.MaxValue + 1;`), it's a **compile error** (CS0220), not a wrap-around. To see the wrap, the value must come from a variable, or you write `unchecked(int.MaxValue + 1)`.
+  - Overflow wrapping applies to **integer** types. `double` goes to `Infinity` instead, and `decimal` always throws `OverflowException`.
 - **Text → number:**
   - `int.Parse("42")` converts, but **throws an exception** if the text is not a valid number.
-  - `int.TryParse("abc", out int result)` **never throws**. It returns `true`/`false`, and puts the number in `result` (or 0 if it failed). **Prefer this for user input.**
+  - `int.TryParse("abc", out int result)` reports bad text through its **return value** (`true`/`false`) instead of throwing, and puts the number in `result` (or 0 if it failed). **Prefer this for user input.** (Some overloads can still throw for *programmer* mistakes, such as passing an invalid `NumberStyles` value, but not for bad input text.)
   - `Convert.ToInt32(x)` works on many input types and turns `null` into `0`.
-- **double vs decimal:** `double` stores numbers in binary, and many decimal fractions (like 0.1) can't be stored exactly in binary, just like 1/3 can't be written exactly in decimal (0.3333…). `decimal` stores numbers in base 10, so 0.1 is exact.
+- **double vs decimal:** `double` stores numbers in binary, and many decimal fractions (like 0.1) can't be stored exactly in binary, just like 1/3 can't be written exactly in decimal (0.3333…). `decimal` stores numbers in base 10, so 0.1 is exact. "Exact" has limits, though: `decimal` holds about 28–29 significant digits, and a calculation like `100m / 3` still has to be rounded. For money you still need explicit **rounding rules** (how many decimal places, which midpoint rule).
 
 ### Code
 
@@ -208,11 +417,16 @@ public static class T01_TypesAndConversions
         Console.WriteLine($"bool={isActive}, char={grade}, string={city}");
         Console.WriteLine($"Sizes in bytes: int={sizeof(int)}, long={sizeof(long)}, double={sizeof(double)}, decimal={sizeof(decimal)}");
 
-        // --- 2. Implicit conversion: small type -> bigger type. No data can be lost, so no cast needed ---
+        // --- 2. Implicit conversion: the compiler allows it without a cast ---
         int small = 100;
-        long bigger = small;
+        long bigger = small;        // int -> long and int -> double keep every int value exactly
         double asDouble = small;
         Console.WriteLine($"Implicit: int {small} -> long {bigger} -> double {asDouble}");
+
+        // ...but "implicit" does NOT always mean "lossless": float keeps only about 7 significant digits
+        int orderCount = 123_456_789;
+        float approx = orderCount;  // compiles without a cast!
+        Console.WriteLine($"Implicit int -> float: {orderCount} became {(int)approx}   (precision lost silently)");
 
         // --- 3. Explicit conversion (cast): you force it, and data CAN be lost ---
         double price = 9.99;
@@ -236,7 +450,7 @@ public static class T01_TypesAndConversions
 
         // --- 5. Converting text to numbers ---
         int parsed = int.Parse("42");                              // throws if the text is not a number
-        bool success = int.TryParse("abc", out int tryResult);      // never throws, returns true/false
+        bool success = int.TryParse("abc", out int tryResult);      // bad text -> returns false instead of throwing
         Console.WriteLine($"int.Parse(\"42\") = {parsed}");
         Console.WriteLine($"int.TryParse(\"abc\") -> success={success}, value={tryResult}");
 
@@ -272,6 +486,7 @@ int=30, long=8000000000, double=36.6, decimal=50000.75
 bool=True, char=A, string=Pune
 Sizes in bytes: int=4, long=8, double=8, decimal=16
 Implicit: int 100 -> long 100 -> double 100
+Implicit int -> float: 123456789 became 123456792   (precision lost silently)
 (int)9.99 = 9
 (int)3,000,000,000 = -1294967296
 checked((int)3,000,000,000) threw OverflowException
@@ -306,13 +521,13 @@ decimal: 0.1 + 0.2 = 0.3
 ### Interview questions
 
 1. **What is the difference between implicit and explicit conversion?**
-   Implicit conversion happens automatically when no data can be lost (`int` → `long`). Explicit conversion needs a cast `(int)x` because data might be lost (`double` → `int` cuts the decimal part).
+   Implicit conversion is allowed without a cast because the target type covers the source type's range (`int` → `long`). Explicit conversion needs a cast `(int)x` because the value might not fit or might be cut (`double` → `int` drops the decimal part). Implicit doesn't always mean lossless: `int` → `float` and `long` → `double` can lose precision.
 2. **Why use `decimal` instead of `double` for money?**
-   `double` is binary floating point, so values like 0.1 can't be stored exactly (0.1 + 0.2 = 0.30000000000000004). `decimal` is base-10, so it's exact for money. The trade-off is that it's slower and uses more memory.
+   `double` is binary floating point, so values like 0.1 can't be stored exactly (0.1 + 0.2 = 0.30000000000000004). `decimal` is base-10, so decimal fractions like 0.1 are exact (within about 28 digits). You still need explicit rounding rules for things like division and tax. The trade-off is that it's slower and uses more memory.
 3. **`int.Parse` vs `int.TryParse` vs `Convert.ToInt32`?**
-   `Parse` throws on invalid or null input. `TryParse` returns `bool` and never throws, so it's best for user input. `Convert.ToInt32` returns 0 for `null` and accepts many input types.
+   `Parse` throws on invalid or null input. `TryParse` reports invalid input through its `bool` return value instead of throwing, so it's best for user input. `Convert.ToInt32` returns 0 for `null` and accepts many input types (and rounds doubles with banker's rounding, while a cast truncates).
 4. **What happens when an `int` overflows?**
-   By default it silently wraps around (`int.MaxValue + 1` = `int.MinValue`). Inside `checked` it throws `OverflowException`.
+   At runtime, in the default unchecked context, it silently wraps around (e.g. `int x = int.MaxValue; x++;` gives `int.MinValue`). Inside `checked` it throws `OverflowException`. If the overflow is in a constant expression (`int.MaxValue + 1` written literally), the compiler reports error CS0220 instead.
 5. **What does `Math.Round(2.5)` return and why?**
    `2`, because the default is banker's rounding (round half to even). Pass `MidpointRounding.AwayFromZero` to get 3.
 
@@ -461,6 +676,8 @@ Memory has two main areas you need to know about:
 | How it's cleaned | Automatically, the moment a method finishes | By the **Garbage Collector (GC)**, which periodically finds and frees objects no longer used |
 | Typically holds | Local variables of value types, and references (addresses) | Objects created with `new` from classes, arrays, strings |
 
+> **Keep this straight from the start:** the stack/heap picture is a *typical runtime layout*, not the definition. The **language rule** that defines value vs reference types is **copy semantics**: assigning a value type copies the data; assigning a reference type copies the reference. Where things physically live depends on context (see 5-YOE depth below).
+
 This is what memory looks like after `var customer = warehouse;` (a struct copy) and `var cartInSession = cart;` (a class copy):
 
 ```mermaid
@@ -580,7 +797,7 @@ Notice the bug hiding in `SnapToNearestRoad`: it *looks* like it corrects the pi
   - a local captured by a lambda or used across `await` → heap (the compiler moves it into a hidden object)
 
   The real difference is **copy semantics**: value types are copied by value, reference types by reference. That's the answer interviewers want.
-- **When to make a struct** (Microsoft's guidance): it represents a single small value (like a point or money), it's under about 16 bytes, it's immutable, and it won't be boxed often. Otherwise use a class.
+- **When to make a struct** (Microsoft's guidance): it represents a single small value (like a point or money), it's small (Microsoft suggests under about 16 bytes; this is a **heuristic**, not a rule, because what really matters is how often it's copied), it's immutable, and it won't be boxed often. Otherwise use a class.
 - Large structs are expensive to copy every time they are passed around. That's why `in` parameters (topic 6) and `readonly struct` exist.
 - `stops[0].Latitude = 19.0` with `List<DeliveryLocation>` is a **compile error**: the indexer returns a *copy*, and changing a temporary copy would be pointless. With arrays (`stopsArray[0].Latitude = 19.0`) it works, because arrays give direct access to the element.
 
@@ -1046,7 +1263,7 @@ flowchart LR
 ### 5-YOE depth
 
 - **Default values are baked into the caller.** When code calls `SendOtp(phone)`, the compiler writes `SendOtp(phone, "SMS", 5)` into the *calling* code. If a library later changes the default expiry to 3 minutes (say, for a security audit), old callers still pass 5 until they're recompiled. This is a versioning trap for public libraries, and it's the same problem as `const` (topic 7).
-- **`async` methods can't have `ref`, `out` or `in` parameters**, because the method may pause and resume later, when the caller's variable might not exist any more. That's one reason the `TryXxx` pattern returns a tuple in async code.
+- **`async` methods can't have `ref`, `out` or `in` parameters (a language rule).** The reason: the compiler rewrites an async method into a **state machine** object, so that everything the method needs can survive across each `await`, when the method pauses and resumes later. Parameters and locals become **fields** of that object, which can live on the heap. A `ref` is a pointer to the caller's storage (often a stack slot), and C# doesn't allow storing a `ref` inside a heap object, because the storage it points to may be gone by the time the method resumes. In async code, return the extra values instead, e.g. as a tuple `Task<(bool Found, int Percent)>` or a small result record.
 - **`in` with a non-`readonly` struct** can be *slower*: when the method calls a member on it, the compiler makes a hidden **defensive copy** to guarantee nothing changes. Use `in` with `readonly struct` only.
 - **`params` allocates an array on every call.** C# 13 (.NET 9) allows **params collections** such as `params ReadOnlySpan<int>`, which can avoid that allocation (Chapter 3).
 - C# also supports **`ref` returns and `ref` locals** (returning a reference into an array, for example), used in high-performance code.
@@ -1058,7 +1275,7 @@ flowchart LR
 2. **What is `in` for?**
    Passing large structs by reference without copying them, while preventing modification. Best used with `readonly struct`.
 3. **Why can't async methods have `ref`/`out` parameters?**
-   An async method can pause, return to the caller, and resume later. By then the caller's stack variable may be gone, so a reference to it can't be held safely.
+   It's a language rule. The compiler turns an async method into a state machine whose parameters become fields that can live on the heap, so they survive across `await`s. A `ref`/`out` is a reference to the caller's storage, and C# can't store such a reference in a heap object (it might outlive what it points to). Return a tuple or a result object instead.
 4. **What's the versioning issue with optional parameters?**
    Default values are compiled into the caller. Changing them in a library doesn't affect existing callers until they're recompiled.
 5. **What does `params` do?**
@@ -1191,7 +1408,7 @@ MathHelper.Square(7) = 49
 ### 5-YOE depth
 
 - **The `const` versioning problem.** If library A has `public const int MaxItems = 10;` and app B uses it, B's compiled code contains the literal `10`. Shipping a new A with `MaxItems = 20` changes nothing in B until B is recompiled. `static readonly` is read at runtime, so it always gets the current value. **Rule:** `const` only for values that will truly never change (e.g. `Math.PI`, days in a week).
-- **Static constructors are thread-safe**: the runtime guarantees they run exactly once even if many threads hit the class at once. This is why a `static readonly` field is the simplest thread-safe singleton (Chapter 22).
+- **Static constructors are thread-safe**: the runtime guarantees they run exactly once even if many threads hit the class at once. So a `static readonly` field is the simplest way to **create** a singleton safely (Chapter 22). But only the **creation** is thread-safe: if the singleton object has mutable state (a `List`, a counter), its methods still need their own thread safety (locks, concurrent collections, Chapter 5).
 - **If a static constructor throws**, you get a `TypeInitializationException`, and **the class is broken for the rest of the process's life**: every future use throws again. Keep static constructors simple.
 - **`beforefieldinit`:** if a class has static field initializers but **no** explicit static constructor, the runtime may initialise statics *earlier* than first use (which is slightly faster). Adding an explicit static constructor guarantees lazy, exact timing.
 - In DI-based apps (Chapter 6), prefer **singleton services** over static classes for shared state. They can be replaced in tests and configured properly.
@@ -1342,7 +1559,7 @@ Notice that a normal class's `ToString()` just prints its type name, while the r
 ### Common mistakes / gotchas
 
 - **Trusting enum values from outside.** `(OrderStatus)99` is legal. Always validate enums that come from API requests or databases (`Enum.IsDefined`, or validation attributes).
-- **Inserting a new enum member in the middle.** It renumbers everything after it, and values already saved in the database now mean something else. **Always assign explicit numbers** to enums that are stored or sent over the network.
+- **Inserting a new enum member in the middle.** It renumbers everything after it, and values already saved in the database now mean something else. **Assign explicit numbers whenever the numeric value is a contract**: stored in a database as an int, or sent as a number in an API or message. (If the enum is only used inside your code, or is always serialized as a **string** name, the numbers matter less. Then *renaming* a member is the breaking change instead.)
 - **Flags enum without powers of two.** `Read = 1, Write = 2, Delete = 3` breaks combining, because 3 = 1 | 2.
 - **Assuming `with` deep-copies.** It's a shallow copy (topic 17).
 - **Records as EF Core entities.** Entities are tracked by identity and are mutable; value-based equality confuses change tracking. Use classes for entities and records for DTOs.
@@ -1368,7 +1585,7 @@ Notice that a normal class's `ToString()` just prints its type name, while the r
 4. **Is `with` a deep copy?**
    No, it's shallow. Reference-type fields are shared between the original and the copy.
 5. **What are the dangers of enums?**
-   Any integer can be cast to an enum, so validate input. Reordering or inserting members changes stored values, so assign explicit values. They serialize as numbers by default.
+   Any integer can be cast to an enum, so validate input. Reordering or inserting members changes the numbers, which breaks data stored as ints or APIs that send numbers, so assign explicit values whenever the number is a contract. They serialize as numbers in JSON by default (if serialized as strings, renaming a member is the breaking change instead).
 6. **What is a `[Flags]` enum?**
    An enum whose values are powers of two, so they can be combined with `|` and tested with `HasFlag` or `&`.
 
@@ -1440,6 +1657,13 @@ sequenceDiagram
 
 Field initializers run **child-first**, but constructor bodies run **parent-first**. Static constructors run once only, which is why the second object skips steps 0 and 2.
 
+**What's guaranteed and what's observed:**
+- **Language rule (guaranteed):** for each object, the derived field initializers run, then the base field initializers, then the base constructor body, then the derived constructor body (steps 1 → 3 → 4 → 5).
+- **Language rule (guaranteed):** each class's static constructor runs **once**, before that class is first used (before its first instance is created or a static member is accessed).
+- **Runtime behaviour (observed on .NET):** exactly *when* the base static constructor runs relative to the derived field initializers (step 2's position) is what .NET does today, and it's the order you'll see in interview answers. The precise interleaving of static constructors across a hierarchy is not something to build logic on.
+
+**Practical rule:** never write code whose correctness depends on one class's static constructor running before another's.
+
 ### Code
 
 ```csharp
@@ -1510,11 +1734,11 @@ public static class T09_ConstructorsPropertiesAccess
     public class PaymentGatewayClient
     {
         public string ProviderName = "CardPay";             // anyone
-        private string _apiKey = "sk_live_123";             // only this class (secrets!)
+        private string _apiKey = "demo_api_key_123";        // only this class (secrets! real keys come from config/Key Vault)
         protected int TimeoutSeconds = 30;                  // this class + child classes (e.g. a RetryingGatewayClient)
         internal string BaseUrl = "https://api.cardpay";    // anything in the same project (assembly)
         protected internal int MaxRetries = 3;              // same project OR child classes anywhere
-        private protected string _signingSecret = "whsec";  // child classes, but only in the same project
+        private protected string _signingSecret = "demo_signing_secret";  // child classes, but only in the same project
 
         public string Describe() =>
             $"{ProviderName} at {BaseUrl}, timeout {TimeoutSeconds}s, retries {MaxRetries}, key ends with {_apiKey[^3..]}, secret length {_signingSecret.Length}";
@@ -1576,7 +1800,7 @@ Customer: Asha, India
 Product: Id=1, Name=Keyboard, Price=1500, Stock=5, InStock=True
 Setting a negative price: Price cannot be negative
 From outside: ProviderName = CardPay, BaseUrl (internal, same project) = https://api.cardpay
-From inside:  CardPay at https://api.cardpay, timeout 30s, retries 3, key ends with 123, secret length 5
+From inside:  CardPay at https://api.cardpay, timeout 30s, retries 3, key ends with 123, secret length 19
 ```
 
 The access modifiers in the gateway client match real decisions: the **API key is private** (it must never leak), the **timeout is protected** (a `RetryingGatewayClient` subclass may need it), and the **base URL is internal** (other classes in the same project, like a health check, may read it).
@@ -1683,7 +1907,8 @@ public static class T10_OopPillars
 
         public bool Withdraw(decimal amount)
         {
-            if (amount > _balance) return false;  // the rule is enforced in ONE place
+            if (amount <= 0) throw new ArgumentException("Withdrawal must be positive");   // without this, Withdraw(-500) would ADD money
+            if (amount > _balance) return false;  // the rules are enforced in ONE place
             _balance -= amount;
             return true;
         }
@@ -1731,6 +1956,14 @@ public static class T10_OopPillars
         var account = new BankAccount();
         account.Deposit(1000);
         Console.WriteLine($"Withdraw 300: {account.Withdraw(300)}, Withdraw 5000: {account.Withdraw(5000)}, Balance: {account.Balance}");
+        try
+        {
+            account.Withdraw(-500);
+        }
+        catch (ArgumentException ex)
+        {
+            Console.WriteLine($"Withdraw -500 rejected: {ex.Message}");
+        }
         // account._balance = 1_000_000;   // COMPILE ERROR: _balance is private
 
         // Runtime polymorphism: the checkout page loops over options without knowing the concrete types
@@ -1752,6 +1985,7 @@ public static class T10_OopPillars
 
 ```
 Withdraw 300: True, Withdraw 5000: False, Balance: 700
+Withdraw -500 rejected: Withdrawal must be positive
 Standard: Rs 70 for 2 kg
 Express: Rs 170 for 2 kg (delivers tomorrow)
 Tax(1000) = 180.00, Tax(1000, 0.05) = 50.00, Tax(3 items x 200) = 108.00
@@ -1762,6 +1996,8 @@ Notice that the checkout loop only knows it has `ShippingMethod` objects, yet ea
 ### Common mistakes / gotchas
 
 - **Thinking encapsulation means "private field + public getter/setter for everything".** A public setter with no rules isn't encapsulation. The point is to **protect invariants** (rules that must always be true, like "balance is never negative").
+- **Forgetting to validate *every* input of a guarded method.** An early version of this `BankAccount` checked `amount > _balance` but not `amount <= 0`, so `Withdraw(-500)` **added** 500 to the balance. Encapsulation only helps if the methods check all the rules.
+- **Confusing abstraction with encapsulation.** Abstraction is about **what you expose** (a simple contract like `Cost(weight)`). Encapsulation is about **protecting state** behind that contract (nobody can set `_balance` directly).
 - **Deep inheritance chains** (`A : B : C : D : E`). They're hard to understand and fragile. Prefer composition (topic 13).
 - **Using inheritance just to reuse code** when there's no real "IS-A" relationship.
 - **Confusing abstraction with abstract classes.** Abstraction is the *idea* (hide the details); abstract classes and interfaces are the *tools*.
@@ -1987,7 +2223,7 @@ As IScanner: Scanned an image
   - Use an **interface** for a capability many unrelated types might have, for DI/mocking boundaries, and when structs need to participate.
   - Use an **abstract class** when related types share real code or state, and you want to control construction or provide a template. Framework examples: `ControllerBase`, `BackgroundService`, `DbContext`, `Stream`.
   - **Common senior answer:** "Expose an interface, and optionally provide an abstract base class that implements it to share code." Example: `IHostedService` and `BackgroundService`.
-- **Versioning:** adding a member to a public interface used to break every implementer. Default interface methods solved this. Adding a non-abstract method to an abstract class was always safe.
+- **Versioning:** adding a member to a public interface used to break every implementer. Default interface methods solved this. Adding a non-abstract method to an abstract class has always been much safer: existing children keep compiling, unless one of them already has a method with the same name, which then hides the new one (warning CS0108).
 - **Static abstract members in interfaces (C# 11):** an interface can require a *static* member, e.g. `static abstract T Parse(string s);`. This powers **generic math** in .NET 7+ (`INumber<T>`), so you can write `T Sum<T>(T[] items) where T : INumber<T>`.
 - **Casting a struct to an interface boxes it** (topic 18). Generic constraints (`where T : IComparable<T>`) avoid that.
 - Interfaces can also declare `static` members, constants and (from C# 8) private and static helper methods.
@@ -2477,7 +2713,7 @@ public static class T14_Solid
     private class ProductCatalog : IReadRepository<string>, IWriteRepository<string>
     {
         private readonly List<string> _items = new() { "Pen", "Book" };
-        public string? Get(int index) => index < _items.Count ? _items[index] : null;
+        public string? Get(int index) => index >= 0 && index < _items.Count ? _items[index] : null;   // check BOTH bounds
         public void Add(string item) => _items.Add(item);
     }
 
@@ -2531,6 +2767,8 @@ I: reader.Get(1) = Book
 D: Email to asha@example.com: Welcome!
 D: SMS to +91-9000000000: Welcome!
 ```
+
+> Following a design principle doesn't make an implementation correct. An earlier version of `ProductCatalog.Get` only checked `index < _items.Count`, so `Get(-1)` crashed with `ArgumentOutOfRangeException`. The interfaces were well designed; the bounds check was still wrong.
 
 > Notice `180.00` and `900.0`: `decimal` remembers how many decimal places came from the calculation (`0.18m` has 2, `0.9m` has 1). The values are still exactly equal to 180 and 900.
 
@@ -2601,7 +2839,9 @@ If you override `Equals` but forget `GetHashCode`, `HashSet.Contains` and `Dicti
 
 **Doing it properly:** override `Equals(object?)`, override `GetHashCode()` using `HashCode.Combine(...)` with **the same fields** that `Equals` compares, and optionally overload `==` and `!=` so they behave consistently.
 
-In the example below, `BrokenUser` overrides only `Equals`. The two objects are "equal", but they have different identity-based hash codes, so the `HashSet` searches the wrong shelf and says it doesn't contain the item.
+In the example below, `BrokenUser` overrides only `Equals`. The two objects are "equal", but they almost certainly have different identity-based hash codes, so the `HashSet` searches the wrong shelf and says it doesn't contain the item.
+
+> **Rule vs observed result:** the **guarantee** you must provide is "equal objects return equal hash codes". `BrokenUser` breaks that contract, so hash collections are **no longer guaranteed to give correct results** for it. The `false` result in the output is what you'll see practically every time, but in theory two identity hash codes could collide and the lookup could "accidentally" work. The lesson is the broken contract, not the exact output.
 
 This is how `HashSet.Contains(lookup)` works, and why the broken version fails:
 
@@ -2746,7 +2986,7 @@ Related helpers:
 ### How it works
 
 - `Money` implements both interfaces. `wallet.Sort()` then calls `CompareTo` automatically to order the amounts.
-- `CompareTo` can enforce rules too: comparing INR with USD makes no sense, so it throws.
+- `CompareTo` can enforce rules too: comparing INR with USD makes no sense, so it throws. This is a **deliberate domain decision** with a consequence: sorting a list that contains **mixed currencies** will throw. That's fine if your design guarantees one currency per list (e.g. one wallet = one currency). If mixed lists are possible, define a full ordering instead (e.g. by currency code first, then amount), or convert to a common currency before sorting. Make equality and ordering rules explicit and consistent.
 - Operator overloads (`==`, `!=`, `<`, `>`) are added so code reads naturally: `if (price < budget)`. C# requires them **in pairs** (`==` with `!=`, `<` with `>`).
 - `team.Sort(new BySalaryDescending())` uses an `IComparer<T>`, and `team.Sort((x, y) => x.Age.CompareTo(y.Age))` uses a quick inline comparison (a **lambda**, Chapter 3).
 
@@ -3014,7 +3254,12 @@ Record 'with': order.Items = [Pen, Book]  <- the list is shared!
 
 - **Assuming `with` or `MemberwiseClone` deep-copies.** Neither does.
 - **Returning internal lists directly from a class.** The caller can modify your object's internals. Return a copy or `IReadOnlyList<T>`.
-- **JSON deep copy on objects with circular references** (A → B → A). It throws unless you configure `ReferenceHandler.Preserve`. It also skips private fields and can't handle every type.
+- **Treating JSON as a universal deep-copy tool.** It works in this example because `Person` has a public parameterless constructor (a class with no constructor written gets one automatically) and public settable properties. It breaks or silently loses data when:
+  - the object has circular references (A → B → A) and you didn't configure `ReferenceHandler.Preserve`
+  - there are private fields, or get-only properties without a matching constructor
+  - a type can't be serialized at all (streams, delegates, DB connections)
+  - constructor validation is bypassed, or settings like naming policies and ignore rules change the result
+- **Copying shared references that should stay shared.** "Deep" has to be defined per object graph. A deep copy of an `Order` should copy its lines, but probably *not* duplicate the `Customer` it belongs to or a shared `TaxConfiguration`.
 
 ### 5-YOE depth
 
@@ -3053,9 +3298,9 @@ Record 'with': order.Items = [Pen, Book]  <- the list is shared!
 
 ### How it works
 
-- `object boxed = 42;` allocates a heap object containing a copy of 42. On 64-bit .NET, a boxed `int` takes **24 bytes** (an object header plus a type pointer plus the 4-byte value plus padding), compared to 4 bytes unboxed.
+- `object boxed = 42;` allocates a heap object containing a copy of 42. On **64-bit .NET** (runtime behaviour, not a language rule), a boxed `int` takes **24 bytes** (an 8-byte object header plus an 8-byte type pointer plus the 4-byte value, padded), compared to 4 bytes unboxed. On 32-bit it's smaller. The exact size is an implementation detail; what matters is "every box is a separate heap allocation".
 - **Unboxing must use the exact type that was boxed.** A boxed `int` can only be unboxed as `int` (or `int?`). To get a `long`, unbox to `int` first, then convert: `(long)(int)boxed`.
-- **Casting a struct to an interface boxes it.** In the example, `IStockLevel asInterface = stock;` creates a boxed **copy**, so a reservation made through the interface **doesn't change the original stock**. In an inventory system, that means units look reserved in one place and available in another.
+- **Converting a struct to an interface type boxes it** (by the language semantics; the JIT can occasionally optimise a box away when it can prove nobody will notice, but you should never rely on that). In the example, `IStockLevel asInterface = stock;` creates a boxed **copy**, so a reservation made through the interface **doesn't change the original stock**. In an inventory system, that means units look reserved in one place and available in another.
 
 ```mermaid
 flowchart LR
@@ -3064,7 +3309,7 @@ flowchart LR
         R["boxed = address #7"]
     end
     subgraph Heap
-        B["Box #7 (24 bytes)<br/>header | type: Int32 | 42"]
+        B["Box #7 (~24 bytes on 64-bit)<br/>header | type: Int32 | 42"]
     end
     V -- "object boxed = orderId;<br/>BOXING copies the value" --> B
     R --> B
@@ -3137,13 +3382,13 @@ public static class T18_BoxingUnboxing
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1000; i++) holder = i;   // 1000 boxes
         long after = GC.GetAllocatedBytesForCurrentThread();
-        GC.KeepAlive(holder);
-        Console.WriteLine($"Boxing 1000 ints allocated {after - before} bytes");
+        GC.KeepAlive(holder);                        // keeps the last box referenced (reachable) up to this point
+        Console.WriteLine($"Boxing 1000 ints allocated {after - before} bytes (observed on 64-bit .NET; varies by runtime)");
     }
 }
 ```
 
-> `GC.GetAllocatedBytesForCurrentThread()` reports how much memory this thread has allocated so far, so subtracting before and after measures the cost of the loop. `GC.KeepAlive` just makes sure the compiler doesn't optimise the loop away.
+> `GC.GetAllocatedBytesForCurrentThread()` reports how much memory this thread has allocated so far, so subtracting before and after measures the cost of the loop. `GC.KeepAlive(holder)` tells the garbage collector that `holder` is still in use up to that line. It's about **object lifetime** for the GC, not a general "don't optimise this" switch.
 
 **Output:**
 
@@ -3154,10 +3399,10 @@ After orderId = 100, boxed is still 42   (the box holds its own copy)
 (long)(int)boxed = 42
 stock.Quantity = 10, asInterface.Quantity = 9   <- the reservation was lost on the original!
 ArrayList sum = 1897, List<int> sum = 1897
-Boxing 1000 ints allocated 24000 bytes
+Boxing 1000 ints allocated 24000 bytes (observed on 64-bit .NET; varies by runtime)
 ```
 
-1000 boxes × 24 bytes = 24,000 bytes, for numbers that would take 4,000 bytes unboxed.
+On this machine: 1000 boxes × 24 bytes = 24,000 bytes, for numbers that would take 4,000 bytes unboxed. Treat the number as a **measurement**, not a guarantee. The point is the **ratio**: boxing multiplies memory use and creates garbage.
 
 ### Common mistakes / gotchas
 
@@ -3182,7 +3427,7 @@ Boxing 1000 ints allocated 24000 bytes
 1. **What is boxing and unboxing?**
    Boxing wraps a value type in a heap-allocated object (a copy); unboxing extracts it with an explicit cast to the exact type.
 2. **Why is boxing bad for performance?**
-   Each box is a heap allocation (24 bytes for an `int` on 64-bit) plus a copy, which creates GC pressure in hot paths.
+   Each box is a separate heap allocation plus a copy (typically 24 bytes for an `int` on 64-bit .NET, versus 4 bytes unboxed), which creates GC pressure in hot paths.
 3. **What happens with `(long)boxedInt`?**
    An `InvalidCastException`. Unbox to `int` first, then convert.
 4. **How did generics reduce boxing?**
@@ -3197,7 +3442,8 @@ Boxing 1000 ints allocated 24000 bytes
 **Types and conversions**
 - Use `decimal` for money, never `double` (0.1 + 0.2 ≠ 0.3 in `double`).
 - `(int)9.99` = 9 (truncates). The default rounding is banker's (2.5 → 2); use `MidpointRounding.AwayFromZero` for money.
-- Overflow wraps silently; `checked` throws. Use `TryParse` for user input.
+- Implicit ≠ lossless: `int → float` and `long → double` can lose precision.
+- Runtime integer overflow wraps silently (unchecked by default); `checked` throws; a constant overflow is a compile error. Use `TryParse` for user input.
 
 **var / object / dynamic**
 - `var`: compiler-inferred, strongly typed. `object`: holds anything, cast to use. `dynamic`: runtime-checked, so runtime crashes.
@@ -3224,10 +3470,10 @@ Boxing 1000 ints allocated 24000 bytes
 
 **Class / struct / record / enum**
 - Records: value equality, `with` (shallow!), `ToString`, deconstruction. Use them for DTOs, not EF entities.
-- Enums: any int can be cast in, so validate. Assign explicit values. `[Flags]` uses powers of two. JSON serializes enums as numbers unless configured.
+- Enums: any int can be cast in, so validate. Assign explicit values when the number is a contract (stored as an int, or sent as a number). `[Flags]` uses powers of two. JSON serializes enums as numbers unless configured.
 
 **Constructors / properties / access**
-- Order: derived field initializers → base field initializers → base constructor → derived constructor (static constructors first, once each).
+- Instance order (guaranteed): derived field initializers → base field initializers → base constructor → derived constructor. Each static constructor runs once, before its class is first used. The exact interleaving of static constructors in a hierarchy is observed .NET behaviour (see 1.9), so never depend on it.
 - Never call virtual methods from a constructor. Expose properties, not public fields.
 - Defaults: classes are `internal`, members are `private`. `init` = set only at creation; `required` = must be set at creation; `field` keyword = C# 14.
 
@@ -3260,6 +3506,6 @@ Boxing 1000 ints allocated 24000 bytes
 - Shallow shares inner objects (`MemberwiseClone`, `with`); deep duplicates everything. Prefer immutability. Avoid `ICloneable`.
 
 **Boxing**
-- A value type → `object`/interface means a heap allocation (24 bytes for an `int`). Unbox to the exact type.
+- A value type → `object`/interface means a heap allocation (about 24 bytes for an `int` on 64-bit .NET). Unbox to the exact type.
 - Avoid it with generics, `IEquatable<T>` and generic constraints.
 

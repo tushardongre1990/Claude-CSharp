@@ -17,7 +17,8 @@ public static class T10_OopPillars
 
         public bool Withdraw(decimal amount)
         {
-            if (amount > _balance) return false;  // the rule is enforced in ONE place
+            if (amount <= 0) throw new ArgumentException("Withdrawal must be positive");   // without this, Withdraw(-500) would ADD money
+            if (amount > _balance) return false;  // the rules are enforced in ONE place
             _balance -= amount;
             return true;
         }
@@ -65,6 +66,14 @@ public static class T10_OopPillars
         var account = new BankAccount();
         account.Deposit(1000);
         Console.WriteLine($"Withdraw 300: {account.Withdraw(300)}, Withdraw 5000: {account.Withdraw(5000)}, Balance: {account.Balance}");
+        try
+        {
+            account.Withdraw(-500);
+        }
+        catch (ArgumentException ex)
+        {
+            Console.WriteLine($"Withdraw -500 rejected: {ex.Message}");
+        }
         // account._balance = 1_000_000;   // COMPILE ERROR: _balance is private
 
         // Runtime polymorphism: the checkout page loops over options without knowing the concrete types

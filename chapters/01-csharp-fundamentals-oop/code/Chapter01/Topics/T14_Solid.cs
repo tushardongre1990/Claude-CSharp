@@ -36,7 +36,7 @@ public static class T14_Solid
     private class ProductCatalog : IReadRepository<string>, IWriteRepository<string>
     {
         private readonly List<string> _items = new() { "Pen", "Book" };
-        public string? Get(int index) => index < _items.Count ? _items[index] : null;
+        public string? Get(int index) => index >= 0 && index < _items.Count ? _items[index] : null;   // check BOTH bounds
         public void Add(string item) => _items.Add(item);
     }
 

@@ -17,11 +17,16 @@ public static class T01_TypesAndConversions
         Console.WriteLine($"bool={isActive}, char={grade}, string={city}");
         Console.WriteLine($"Sizes in bytes: int={sizeof(int)}, long={sizeof(long)}, double={sizeof(double)}, decimal={sizeof(decimal)}");
 
-        // --- 2. Implicit conversion: small type -> bigger type. No data can be lost, so no cast needed ---
+        // --- 2. Implicit conversion: the compiler allows it without a cast ---
         int small = 100;
-        long bigger = small;
+        long bigger = small;        // int -> long and int -> double keep every int value exactly
         double asDouble = small;
         Console.WriteLine($"Implicit: int {small} -> long {bigger} -> double {asDouble}");
+
+        // ...but "implicit" does NOT always mean "lossless": float keeps only about 7 significant digits
+        int orderCount = 123_456_789;
+        float approx = orderCount;  // compiles without a cast!
+        Console.WriteLine($"Implicit int -> float: {orderCount} became {(int)approx}   (precision lost silently)");
 
         // --- 3. Explicit conversion (cast): you force it, and data CAN be lost ---
         double price = 9.99;
@@ -45,7 +50,7 @@ public static class T01_TypesAndConversions
 
         // --- 5. Converting text to numbers ---
         int parsed = int.Parse("42");                              // throws if the text is not a number
-        bool success = int.TryParse("abc", out int tryResult);      // never throws, returns true/false
+        bool success = int.TryParse("abc", out int tryResult);      // bad text -> returns false instead of throwing
         Console.WriteLine($"int.Parse(\"42\") = {parsed}");
         Console.WriteLine($"int.TryParse(\"abc\") -> success={success}, value={tryResult}");
 

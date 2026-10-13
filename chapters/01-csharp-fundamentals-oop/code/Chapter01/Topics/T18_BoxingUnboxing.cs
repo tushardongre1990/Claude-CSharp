@@ -60,7 +60,7 @@ public static class T18_BoxingUnboxing
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1000; i++) holder = i;   // 1000 boxes
         long after = GC.GetAllocatedBytesForCurrentThread();
-        GC.KeepAlive(holder);
-        Console.WriteLine($"Boxing 1000 ints allocated {after - before} bytes");
+        GC.KeepAlive(holder);                        // keeps the last box referenced (reachable) up to this point
+        Console.WriteLine($"Boxing 1000 ints allocated {after - before} bytes (observed on 64-bit .NET; varies by runtime)");
     }
 }

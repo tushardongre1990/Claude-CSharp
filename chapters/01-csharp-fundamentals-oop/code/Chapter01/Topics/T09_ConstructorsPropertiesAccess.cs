@@ -65,11 +65,11 @@ public static class T09_ConstructorsPropertiesAccess
     public class PaymentGatewayClient
     {
         public string ProviderName = "CardPay";             // anyone
-        private string _apiKey = "sk_live_123";             // only this class (secrets!)
+        private string _apiKey = "demo_api_key_123";        // only this class (secrets! real keys come from config/Key Vault)
         protected int TimeoutSeconds = 30;                  // this class + child classes (e.g. a RetryingGatewayClient)
         internal string BaseUrl = "https://api.cardpay";    // anything in the same project (assembly)
         protected internal int MaxRetries = 3;              // same project OR child classes anywhere
-        private protected string _signingSecret = "whsec";  // child classes, but only in the same project
+        private protected string _signingSecret = "demo_signing_secret";  // child classes, but only in the same project
 
         public string Describe() =>
             $"{ProviderName} at {BaseUrl}, timeout {TimeoutSeconds}s, retries {MaxRetries}, key ends with {_apiKey[^3..]}, secret length {_signingSecret.Length}";
