@@ -4,6 +4,7 @@ using Chapter01.Topics;
 
 var demos = new Dictionary<int, (string Title, Action Run)>
 {
+    [0] = ("C# syntax you need: if, switch, loops, is/as", T00_SyntaxBasics.Run),
     [1] = ("Types, variables, casting and type conversions", T01_TypesAndConversions.Run),
     [2] = ("var vs dynamic vs object", T02_VarDynamicObject.Run),
     [3] = ("Value types vs reference types", T03_ValueVsReference.Run),
@@ -24,15 +25,17 @@ var demos = new Dictionary<int, (string Title, Action Run)>
     [18] = ("Boxing and unboxing", T18_BoxingUnboxing.Run),
 };
 
-if (args.Length > 0 && int.TryParse(args[0], out var topic) && demos.TryGetValue(topic, out var demo))
+if (args.Length > 0)
 {
-    Print(topic, demo);
+    if (int.TryParse(args[0], out var topic) && demos.TryGetValue(topic, out var demo))
+        Print(topic, demo);
+    else
+        Console.WriteLine($"Unknown topic '{args[0]}'. Valid topics: {string.Join(", ", demos.Keys)}");
+    return;
 }
-else
-{
-    foreach (var (number, d) in demos)
-        Print(number, d);
-}
+
+foreach (var (number, d) in demos)
+    Print(number, d);
 
 static void Print(int number, (string Title, Action Run) demo)
 {

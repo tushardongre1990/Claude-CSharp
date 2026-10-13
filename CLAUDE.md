@@ -26,6 +26,16 @@ Write every note so that **a person with zero knowledge of the topic can read it
 - Where a textbook example is famous and interviewers expect you to know it (e.g. Square/Rectangle for LSP), mention it briefly in prose, but the code still uses a real scenario.
 - Prefer examples that show a **realistic bug or production consequence** (e.g. "a hidden method made PDFs save as .txt"). These make strong interview stories.
 
+## Accuracy and precision of claims
+
+- **Distinguish three kinds of claims** and label them when it matters: **language rule** (guaranteed by the C# spec), **runtime behaviour** (what .NET does today; may vary by version, 32/64-bit or optimisation), and **design guidance** (good advice with exceptions).
+- **Avoid absolute words** ("always", "never", "guaranteed", "exact") unless it's a true language rule. Qualify heuristics (e.g. "struct under ~16 bytes" is a guideline).
+- **Measured numbers** (timings, allocation bytes, object sizes) are observations, not guarantees. Say where they were measured.
+- **Run every code sample** and paste the real output. Never guess output.
+- Test edge cases in examples (negative numbers, empty input, null) so that the example code itself has no bugs.
+- **When a fact is corrected, fix it everywhere it appears**: the topic section, its interview questions, the Quick revision, quiz-answers.md and exercises.md. Grep the chapter for the old wording before finishing.
+- When an external review (e.g. from ChatGPT) is shared, **verify each claim by running code** before accepting or rejecting it, and tell the learner which points were valid and which weren't.
+
 ## Diagrams
 
 - **Use Mermaid diagrams** (` ```mermaid ` code blocks) wherever a picture makes a concept easier: memory layout, object relationships (class diagrams), execution order (sequence diagrams), request flows, decision trees (flowcharts), state changes.
