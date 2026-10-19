@@ -1,0 +1,106 @@
+# Chapter 2 Quiz — Answers
+
+Don't read this until you've written your own answers in [quiz.md](quiz.md). All Part B outputs were verified by running the code on .NET 10.
+
+## Part A — Concepts
+
+1. An array has a fixed size chosen at creation. `List<T>` wraps an internal array and grows. When it's full, `Add` allocates a bigger array (double the size in .NET today, starting at 4: runtime behaviour), copies every item, and the old array becomes garbage. Both give O(1) access by index.
+2. `Count` is how many items you added; `Capacity` is the size of the internal array. Pass a capacity when you know (or can estimate) the final size, e.g. mapping 10,000 entities to DTOs. That gives one allocation instead of repeated grow-and-copy steps, so less memory and less GC work (measured in the notes: ~2.6× less allocation for 100,000 ints).
+3. The list has an internal version number that changes on every modification. The enumerator checks it on each `MoveNext` and throws `InvalidOperationException` ("Collection was modified") so it never skips or repeats items. Fixes: `list.RemoveAll(predicate)`, a backwards `for` loop with `RemoveAt(i)`, or building a new list with `Where(...).ToList()`.
+4. (1) Call `key.GetHashCode()`. (2) Map it to a bucket: `hash % buckets.Length`. (3) Walk the entries chained in that bucket, comparing the stored hash first and then `Equals`. (4) On a match, return the value; at the end of the chain, the indexer throws `KeyNotFoundException` (or `TryGetValue` returns `false`).
+5. Two different keys land in the same bucket. .NET chains them: each entry stores the index of the next entry in the same bucket, and lookups walk that chain calling `Equals`. A few collisions are normal; many collisions turn O(1) into O(n).
+6. It still works **correctly**, because `Equals` decides equality, but every key goes into one bucket, so every insert and lookup is O(n) and building the dictionary is O(n²). In the notes' demo, one lookup among 1,000 keys needed 1,000 `Equals` calls instead of 1.
+7. If that property is used in `GetHashCode`, the entry stays in the bucket computed from the old hash. Lookups compute the new hash, search the wrong bucket and fail. `ContainsKey` returns `false`, but `Count` still includes the entry: it's unreachable and leaks memory. Keys must be immutable (at least the fields used for hashing).
+8. `TryGetValue` does one lookup and never throws; `ContainsKey` + indexer does two lookups. `Add` throws `ArgumentException` on a duplicate key; the indexer setter adds or **silently overwrites**; `TryAdd` returns `false` on a duplicate, without throwing or overwriting.
+9. No. The order is documented as undefined. Today it often looks like insertion order, but after a `Remove`, a new item reuses the freed slot and appears in the middle (the notes' demo printed `D, B, C`). Use `SortedDictionary` for key order, `OrderedDictionary<TKey,TValue>` (.NET 9) for insertion order, or sort when reading.
+10. In .NET Core and later, string hash codes are randomized per process (to protect against hash-flooding attacks). The same string gives a different hash every time the app starts. For a stable value, use a real hash function (SHA-256, `XxHash64`).
+11. FIFO (`Queue<T>`): send order notifications in the order they were created. LIFO (`Stack<T>`): undo the most recent cart change, or walk a category tree depth-first without recursion.
+12. When you hold references to nodes and need O(1) insert/remove/move-to-front anywhere, e.g. an LRU cache (dictionary of nodes + linked list). It's often slower than `List<T>` because each node is a separate heap object (more memory, more GC) scattered in memory (poor CPU cache locality), and finding a position is still O(n).
+13. Both keep keys sorted. `SortedDictionary` is a red-black tree: O(log n) insert/remove/lookup, one node object per item. `SortedList` uses two sorted arrays: O(log n) lookup, O(n) insert/remove in the middle, less memory, and access by index. Use `SortedList` for data built once (or in sorted order) and read often.
+14. No. It's a heap, which isn't stable, so equal priorities come out in no guaranteed order (the notes' demo: `#1 #6 #5 #4 #3 #2`). Make it fair by using a composite priority `(tier, sequenceNumber)`, where the sequence number increases with each enqueue.
+15. A `Dictionary<TKey, LinkedListNode<T>>` plus a `LinkedList<T>`. On access, look up the node in O(1) and move it to the front. On insert, add to the front; if over capacity, remove the last node and its dictionary entry. All O(1). In a real app, prefer `IMemoryCache` with `SizeLimit`.
+16. `IEnumerable<T>`: can only be looped over. `ICollection<T>`: adds `Count`, `Add`, `Remove`, `Contains`, `Clear`. `IList<T>`: adds index get/set, `Insert`, `RemoveAt`, `IndexOf`. `IReadOnlyList<T>`: `Count` and an index **getter** only, with no modification methods.
+17. No. The read-only interfaces were added later (.NET 4.5), and changing the old interfaces would have broken existing code. `List<T>` implements both families, but a variable typed `IList<T>` can't be passed directly where `IReadOnlyList<T>` is expected (verified on .NET 10).
+18. Return `IReadOnlyList<T>`/`IReadOnlyCollection<T>` for already-loaded data: the caller gets `Count` and indexing but can't change your internal state, and it's clear the data is materialized. Accept the smallest interface you need: `IEnumerable<T>` if you loop once, `IReadOnlyCollection<T>`/`IReadOnlyList<T>` if you need `Count`, indexing or several passes.
+19. The work doesn't run when the sequence is created, only when it's enumerated, and it runs again on every enumeration. `yield` methods, LINQ operators and EF Core queries are deferred. Enumerating twice can run a database query twice, re-read a file, or give different results each time. Call `ToList()` once if you need the data more than once.
+20. No. It only hides the modification methods. The owner can still change the underlying list (the view shows the change), and if you return the `List<T>` itself typed as `IReadOnlyList<T>`, a caller can cast it back and modify it. Prevent that with `AsReadOnly()` (a wrapper that throws `NotSupportedException` on writes), a copy, or immutable/frozen collections.
+21. O(n × m) = up to 2.5 billion comparisons, because `Any` scans the product list for every line. Build `var productIds = products.Select(p => p.Id).ToHashSet();` once (O(m)), then `productIds.Contains(line.ProductId)` is O(1), for O(n + m) total. Or let the database do the join.
+22. Most operations are cheap, with an occasional expensive one (a `List<T>` resize copies everything), but averaged over a long sequence the cost per operation is constant.
+23. `ArrayList` stores `object`: no compile-time type safety (a string in a "list of prices" crashes only at runtime with `InvalidCastException`), boxing for every value type, and casts everywhere. `List<T>` is checked at compile time, stores value types without boxing, and needs no casts. Generics also let you write one implementation (`Repository<T>`, `Result<T>`) for many types.
+24. Any five of: `class` (reference type, can use `null`); `struct` (non-nullable value type); `notnull`; `unmanaged` (no references inside); `new()` (can call `new T()`); a base class (use its members); an interface (call its members, e.g. `entity.Id`); another type parameter `T : U`; `Enum`/`Delegate`; `INumber<T>` (.NET 7, use `+` and `T.Zero`).
+25. No. .NET generics are reified, so each closed type is a distinct runtime type with its own static fields, and you can inspect `T` with reflection. The JIT generates one shared native implementation for all reference-type arguments (references are the same size) and a separate specialized implementation for each value-type argument (no boxing, values stored inline).
+26. `EqualityComparer<T>.Default.Equals(a, b)`. `==` doesn't compile on an unconstrained `T`. The default comparer uses `IEquatable<T>` when available (no boxing) and handles `null`.
+27. Covariance (`out`): an `IEnumerable<CardPayment>` can be used as `IEnumerable<Payment>`, because items only come out. Contravariance (`in`): an `IComparer<Payment>` (or `Action<Payment>`) can be used where `IComparer<CardPayment>` is needed, because items only go in, and something that handles any payment can handle a card payment.
+28. `List<T>` is a class, and classes can't be variant in C#. It's also unsafe: if it were allowed, `paymentList.Add(new UpiPayment(...))` would put a UPI payment into a list of card payments. Use `IEnumerable<Payment>` or `IReadOnlyList<Payment>` (both covariant) as the parameter or variable type.
+29. `Payment[] arr = new CardPayment[2];` compiles, but writing a `UpiPayment` into it throws `ArrayTypeMismatchException` at runtime. It turns a compile-time error into a runtime one, and the runtime must type-check every write into arrays of non-sealed reference types.
+30. Variance only works for reference types. Converting `int` values to `object` needs boxing (a new object per item), so there's no reference-preserving conversion. Use `.Cast<object>()` if you really need it.
+31. Its internal arrays and bucket chains are updated in several steps without locks. Concurrent writes, or a write during a resize, can lose entries, throw exceptions, or corrupt the chains. Older .NET versions could even spin in an infinite loop at 100% CPU. Modern .NET detects some corruption and throws `InvalidOperationException`. Concurrent reads with no writers are safe.
+32. Yes. Factories run outside the internal lock, so two threads that miss at the same time can both run it. Only one result is stored and both callers receive it, but the work (e.g. an API call) happened twice; the notes' demo forced exactly this. Fix: store `Lazy<T>` (or `Lazy<Task<T>>`) values, so only one `Lazy` wins and its factory runs once.
+33. No. Each individual call is atomic, but "read the value, check it, write the new value" is a sequence of calls, so two threads can both see stock 1 and both reserve it. Use a single atomic operation (`TryUpdate(key, current - 1, current)` in a retry loop, or `AddOrUpdate`), a lock, or, for real stock, a database-level atomic update or row lock (Chapter 15).
+34. `Channel<T>`. `BlockingCollection` blocks threads while it waits, which wastes thread-pool threads in an async server and can cause thread starvation. `Channel<T>` waits asynchronously (`await reader.ReadAsync()`), supports bounding and backpressure, and fits `BackgroundService` workers.
+35. No. It runs when the `try` completes, returns early or throws (and after a `catch`). It does **not** run on `Environment.FailFast`, when the process is killed, on a `StackOverflowException`, or on a power loss. Don't rely on `finally` for business-critical actions; use transactions and idempotency.
+36. Compile error CS0160: "A previous catch clause already catches all exceptions of this or of a super type". Catch blocks must go from most specific to most general.
+37. It's lost. The exception from `finally` replaces it, so the logs show the cleanup error instead of the real cause (e.g. "temp file already deleted" instead of "disk full"). Keep `finally` simple and wrap risky cleanup in its own `try/catch`.
+38. `ArgumentException` (and its subclasses): the argument itself is invalid, whatever the object's state (negative quantity, null email). `InvalidOperationException`: the arguments may be fine, but the object's current state doesn't allow the operation (shipping an already-cancelled order, using a closed connection).
+39. When callers need to catch that specific failure or need structured data about it (e.g. `InsufficientStockException` with `Sku`, `Requested` and `Available`, so the API can return a 409 with a helpful message). It should derive from `Exception`, have a name ending in `Exception`, provide the three standard constructors plus a domain constructor, and expose read-only properties. Don't add a serialization constructor in modern .NET (obsolete, SYSLIB0051).
+40. `catch (X ex) when (condition)`. The condition is evaluated during the first (search) pass, **before** the stack unwinds. If it's false, the catch is skipped as if it didn't exist. Catch-and-rethrow has already unwound the stack (inner `finally` blocks ran, and debugging state at the throw point is gone). Order: the filter runs first, then the inner `finally` blocks, then the catch body.
+41. `throw;` rethrows the current exception and keeps its stack trace. `throw ex;` throws it again from the current line and resets the stack trace, losing the frames where the error happened (CA2200). `throw new X("context", ex);` creates a new exception with business context and keeps the original, with its full trace, in `InnerException`.
+42. It captures an exception together with its stack trace so you can rethrow it later or from somewhere else (after cleanup, on another thread) with `.Throw()`, keeping the original frames and adding a "--- End of stack trace from previous location ---" marker. `await` uses it to rethrow task exceptions.
+43. Throw for unexpected failures and programming errors: database unreachable, missing configuration, null argument, broken invariants. Return a Result (or use a `Try...` method or validation errors) for expected business outcomes the caller must handle: unknown coupon, expired coupon, insufficient stock, duplicate email.
+44. Invalid input is expected and frequent. Exceptions are expensive (the notes measured ~30× slower than returning a result, ~2 µs per throw), hide the possible outcomes from the method signature, flood error logs and monitoring with non-problems, and invite overly broad catches. Validation can also report all field errors at once, which exceptions handle poorly.
+45. The GC only manages memory, and only when it decides to run. Files, database connections, sockets and native handles are scarce resources that must be released promptly and deterministically. `Dispose()` releases them at a moment you control.
+46. A `try/finally` that calls `Dispose()` in the `finally` (with a null check), so disposal happens even on exceptions. Several `using`s in one scope are disposed in **reverse** order of creation, because they're nested `try/finally` blocks.
+47. Almost never: only when your class directly owns a raw unmanaged handle (`IntPtr`), and even then you should wrap the handle in a `SafeHandle` subclass, which already has a correct (critical) finalizer and reference-counts the handle. Classes that only own other `IDisposable` objects implement a simple `Dispose()` with no finalizer.
+48. **HttpClient:** no. Creating and disposing one per request leaves sockets in `TIME_WAIT` and can exhaust sockets under load. Use `IHttpClientFactory` (typed or named clients) or one long-lived client with `PooledConnectionLifetime`. **Injected DbContext:** no. The DI container created it and disposes it at the end of the scope; disposing it yourself breaks other services using the same scoped instance. Only dispose what you create.
+49. One failure is logged several times (noise, storage cost, duplicate alerts), often badly in some layers (message only, no stack trace). Each layer should handle the exception, wrap it with context, or let it propagate; only the boundary (exception middleware or worker loop) logs it, once.
+50. `_logger.LogError(ex, "Checkout failed for order {OrderId}", orderId);`. Passing the exception object first keeps the type, the full stack trace and the inner exceptions; `ex.Message` alone loses all of them. The message template makes `OrderId` a structured, searchable property, and the string isn't built when the log level is disabled; interpolation produces a flat string and always allocates (CA2254).
+
+## Part B — What does this code print?
+
+51. `5 8`. Capacity grows 0 → 4 → 8.
+52.
+    ```
+    1 2
+    ArgumentException
+    ```
+    The indexer overwrites; `Add` throws on a duplicate key.
+53. `False True 2`. `"pay_1"` is already there; `"PAY_1"` is different under the default (case-sensitive, ordinal) comparer.
+54.
+    ```
+    0
+    2
+    ```
+    Nothing runs until enumeration, and `Count()` and `Sum()` each enumerate (run the method) once.
+55.
+    ```
+    try
+    finally
+    shipped
+    ```
+    `finally` runs before the method actually returns its value.
+56. `B`. The first catch's filter is false, so it's skipped as if it didn't exist; the first matching catch is `TimeoutException`.
+57. `ArrayTypeMismatchException`. Array covariance lets a `string[]` be used as `object[]`, but storing an `int` is checked at runtime.
+58.
+    ```
+    query
+    dispose command
+    dispose connection
+    ```
+    Reverse order of creation.
+59. `2,1`. Static fields are per closed generic type: `Counter<int>` and `Counter<string>` are different classes.
+60. `cleanup failed`. The exception from `finally` replaced the `IOException`.
+61. `False 1`. The hash changed from 7 to 8, so the lookup searches a different bucket (that's what happens in practice; in theory the contract is simply broken). The entry is still counted but unreachable.
+62. `A B`. The queue returns the first item added (FIFO), the stack the last (LIFO).
+
+## Part C — Spot the bug
+
+63. Modifying the list inside `foreach` over it throws `InvalidOperationException` on the next iteration after the first removal; the job crashes and nothing is cleaned up. Fix: `orders.RemoveAll(o => o.Status == OrderStatus.Cancelled);`.
+64. Check-then-act race. Each indexer call is thread-safe, but the sequence isn't: two requests can both read 1, both pass the check, and both reserve the last unit (overselling). Also, `Stock[sku]` throws `KeyNotFoundException` for unknown SKUs. Fix: a `TryUpdate(sku, current - 1, current)` retry loop (see the notes' demo), a lock, or, since stock is shared across instances, an atomic database update: `UPDATE Stock SET Qty = Qty - 1 WHERE Sku = @sku AND Qty > 0`, then check the rows affected.
+65. Three problems: `throw ex;` resets the stack trace, so the real failure location is lost; the log call doesn't include the exception object; and it says "retrying later" while not retrying anything (misleading). Logging here **and** at the boundary also duplicates the entry. Fix: remove the try/catch entirely and let the boundary log it, or `throw;` and pass `ex` to the logger if this layer really handles something.
+66. The exception is swallowed and the method returns `true`. A failed charge is reported as captured, so the order ships without payment and there's no log entry. Fix: catch only specific exceptions you can handle, log them, and return a failure result (or let the exception propagate); never return success from a catch-all.
+67. A new `HttpClient` per call, disposed each time, means socket exhaustion under load (`TIME_WAIT`) and no connection reuse. Also: no timeout or resilience handling, no `CancellationToken`, and `decimal.Parse` without a culture can fail on a different locale (use `CultureInfo.InvariantCulture` and validate). Fix: inject a typed client via `IHttpClientFactory` with resilience configured (Chapter 20).
+68. It exposes a mutable `List<OrderLine>` with a public setter. Any caller can add lines with negative quantities, clear the list, or replace it, bypassing validation, so `Total` can become wrong. Fix: a private `List<OrderLine>` field, `public IReadOnlyList<OrderLine> Lines => _lines.AsReadOnly();`, and an `AddLine` method that validates.
+69. It logs only `ex.Message` (no exception type, no stack trace, no inner exception), uses string interpolation (not structured, so `OrderId` isn't searchable; CA2254), and logs and rethrows, which duplicates the boundary's log entry. Fix: remove this catch and let the boundary log `LogError(ex, "Checkout failed for order {OrderId}", orderId)`.
+70. Returning `IEnumerable<T>` over an EF Core query makes it deferred: `Any()`, `Count()` and `foreach` each run a separate SQL query (three round trips), and the results can differ between them (a customer added in between gets an email but wasn't counted). Fix: materialize once (`var customers = await query.ToListAsync();`) and return `IReadOnlyList<Customer>` from the repository; then use `customers.Count` and loop.
+71. A plain `Dictionary` in a singleton is shared by all request threads, and concurrent writes can corrupt it (lost entries, exceptions, old-.NET infinite loops). Also, two requests that miss at the same time both call the rate API (a stampede), and the rates never expire. Fix: `IMemoryCache` with an expiry (or `HybridCache` in .NET 9+), or `ConcurrentDictionary<string, Lazy<decimal>>` if expiry isn't needed.
+72. Several problems: it translates **any** database error into "insufficient stock", which is a wrong diagnosis (a deadlock or timeout would be reported to the customer as out of stock). The inner exception isn't passed, so the real cause disappears. The `sku` isn't stored in a property or the message. The standard constructors are missing. Fix: only throw `InsufficientStockException` when stock is actually insufficient, give it `Sku`/`Requested`/`Available` properties, and wrap database errors in an infrastructure exception with `ex` as the inner exception, or let them propagate.
