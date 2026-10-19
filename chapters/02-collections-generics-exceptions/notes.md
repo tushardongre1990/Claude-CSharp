@@ -357,7 +357,7 @@ Inside a `Dictionary` there are two arrays (*runtime behaviour* of today's .NET 
 **Adding `dict[key] = value`:**
 
 1. Call `key.GetHashCode()`, which returns an `int`, e.g. `1,234,567`.
-2. Turn it into a bucket number: `bucket = hashCode % buckets.Length` (the remainder after division, e.g. `1,234,567 % 7 = 4`).
+2. Turn it into a bucket number. Conceptually: `bucket = hashCode % buckets.Length` (the remainder after division, e.g. `1,234,567 % 7 = 4`). This line is **pseudocode**, not the literal implementation. *Runtime detail:* the real code treats the hash as an **unsigned** number (in C#, `-5 % 7` is `-5`, which isn't a valid index), and on 64-bit .NET it computes the remainder with a faster multiply-and-shift trick (`FastMod`) instead of a division.
 3. Walk the entries on that bucket. For each one, compare the stored hash code first (cheap), then call `Equals` (possibly expensive). If an equal key is found, overwrite its value.
 4. Otherwise add a new entry and link it into that bucket's chain.
 
@@ -545,7 +545,7 @@ Order after Remove(A) then Add(D): D, B, C
 ### Interview questions
 
 1. **How does a `Dictionary` find a value in O(1)?**
-   It calls `GetHashCode()` on the key, maps the hash to a bucket with a modulo, and compares only the entries in that bucket (hash first, then `Equals`). With a good hash function, each bucket holds about one entry, so the work doesn't grow with the size of the dictionary.
+   It calls `GetHashCode()` on the key, maps the hash to a bucket with a modulo, and compares only the entries in that bucket (hash first, then `Equals`). With a well-distributed hash, and because the dictionary grows to keep the number of entries no larger than the number of buckets, buckets hold **on average** about one entry, so the **average** work doesn't grow with the size of the dictionary. That's an average, not a guarantee: collisions make some chains longer, and the occasional resize costs O(n).
 2. **What is a collision and how does .NET handle it?**
    Two different keys map to the same bucket. .NET chains them: each entry stores the index of the next entry in the same bucket, and a lookup walks the chain calling `Equals`. Many collisions turn O(1) into O(n).
 3. **What happens if `GetHashCode` always returns the same number?**
@@ -961,7 +961,7 @@ Read-only view sees later changes to the source: Pending, Shipped
 ### Common mistakes / gotchas
 
 - **Exposing `List<T>` as a public property.** Callers bypass your validation (`LeakyOrder` accepted quantity -5). Keep the list private and expose `IReadOnlyList<T>`.
-- **Returning the list itself typed as `IReadOnlyList<T>`.** A caller can cast it back to `List<T>` and modify it (shown in the demo). Usually that's acceptable inside your own codebase, but for real protection return `AsReadOnly()`, a copy, or an immutable collection.
+- **Returning the list itself typed as `IReadOnlyList<T>`.** A caller can cast it back to `List<T>` and modify it (shown in the demo). Usually that's acceptable inside your own codebase. To block the cast, return `AsReadOnly()`: a **read-only wrapper** (writes through it throw, but it still shows later changes the owner makes to the original list). If callers must get data that can **never** change, return a copy or an immutable/frozen collection.
 - **Enumerating an `IEnumerable<T>` more than once.** If it's lazy (a `yield` method, a LINQ query, an EF Core query), the work runs again. The demo's "database" ran twice for `Sum()` + `Count()`. Call `.ToList()` once when you need the data more than once. The IDE warns about this ("Possible multiple enumeration").
 - **Calling `.Count()` (the LINQ method) on an `IEnumerable<T>`** may loop over everything. If you need the count, ask for `IReadOnlyCollection<T>`, which has a `Count` property.
 - **Accepting `IList<T>` "to be flexible" and then calling `Add`.** An array passed in throws `NotSupportedException` at runtime.
@@ -1024,13 +1024,17 @@ Average costs (*runtime behaviour* of today's implementations; worst cases noted
 | `Dictionary<K,V>` | — | **O(1)** (worst O(n)) | O(1)* | O(1) remove | — | no | larger (buckets + entries) |
 | `HashSet<T>` | — | **O(1)** (worst O(n)) | O(1)* | O(1) remove | — | no | larger |
 | `SortedDictionary<K,V>` | — | O(log n) | O(log n) | O(log n) | O(log n) | by key | a node object per item |
-| `SortedList<K,V>` | O(1) | O(log n) | O(n) | O(n) | O(n) | by key | small |
+| `SortedList<K,V>` | O(1)† | O(log n) | O(n) | O(n) | O(n) | by key | small |
 | `Queue<T>` | — | O(n) | O(1)* | — | O(1) | FIFO | small |
 | `Stack<T>` | — | O(n) | O(1)* | — | O(1) (top) | LIFO | small |
-| `LinkedList<T>` | O(n) | O(n) | O(1) | O(1) if you hold the node | O(1) | by position | a node object per item |
+| `LinkedList<T>` | O(n) | O(n) | O(1)‡ | O(1) if you hold the node | O(1) | by position | a node object per item |
 | `PriorityQueue<E,P>` | — | — | O(log n) | — | O(log n) (min) | by priority | small |
 
 \* amortized: occasionally O(n) when the inner array grows.
+
+† `SortedList` has no `list[0]`-style integer indexer: its indexer `prices["SKU-A"]` is **by key** and costs O(log n). Index-based access is through `prices.Keys[i]` / `prices.Values[i]`, or `GetKeyAtIndex(i)` / `GetValueAtIndex(i)` (public since .NET 7). Verified on .NET 10.
+
+‡ "Add" for `LinkedList` means `AddFirst`, `AddLast`, or `AddBefore`/`AddAfter` a node you already hold. Finding the right position by value first is O(n).
 
 **Decision guide:**
 
@@ -1357,6 +1361,17 @@ Runtime types: List`1<Int32> vs open type List`1, IsGenericTypeDefinition = True
 - **Expecting static fields to be shared across all `T`.** A "global" cache in `Cache<T>` is actually one cache per `T`. Usually that's useful, occasionally surprising.
 - **Over-generalizing.** A `GenericRepository<T>` with 30 methods for every entity often leaks EF Core details and hides real queries. Many teams prefer specific repositories or using `DbContext` directly (Chapter 11). Use generics where the behaviour truly is the same for every type.
 - **Too many type parameters** (`Handler<TRequest, TResponse, TContext, TError>`). Hard to read and to register in DI.
+- **Constraint order and combinations** (language rules, the compiler errors verified on .NET 10):
+  1. `class`, `struct`, `unmanaged` and `notnull` come **first**, and only **one** of them is allowed: `where T : class, struct` → CS0449. (The compiler's message also lists `default`, but that one is special: since C# 9 it's allowed **only** on override methods and explicit interface implementations, to say "T is unconstrained, so `T?` means default-able". On a class, `where T : default` is error CS8823. Verified on .NET 10.)
+  2. Then a base class (at most one), then interfaces (any number).
+  3. `new()` comes **last**: `where T : new(), class` → CS0401.
+  4. `new()` can't be combined with `struct` (every struct already has a parameterless constructor) → CS0451.
+
+  ```csharp
+  public class ReportJob<TExporter> where TExporter : class, IDisposable, new() { }   // compiles: correct order
+  // where TExporter : IDisposable, class   → CS0449 (class must be first)
+  // where TExporter : new(), class         → CS0401 (new() must be last)
+  ```
 
 ### 5-YOE depth
 
@@ -1417,7 +1432,7 @@ Assume `CardPayment` derives from `Payment` (every card payment **is a** payment
 1. Variance can only be declared on **interfaces and delegates**, never on classes or structs. That's why `List<T>` (a class) is always invariant.
 2. `out T` means T may appear only in **output** positions (return types, `get`-only properties). The compiler checks this.
 3. `in T` means T may appear only in **input** positions (method parameters).
-4. Variance works only when the type arguments are **reference types**. `IEnumerable<int>` isn't an `IEnumerable<object>`, because converting would need boxing (verified in the demo: `False`).
+4. Variance conversions only use **reference conversions**: conversions where the same object is simply viewed as a different type, like `CardPayment` → `Payment` or `string` → `object`. `int` → `object` isn't a reference conversion; it's a **boxing** conversion (a new heap object is created). So `IEnumerable<int>` isn't an `IEnumerable<object>` (verified in the demo: `False`), while `IEnumerable<string>` is.
 
 **Why `List<T>` can't be covariant:** if `List<CardPayment>` could be used as `List<Payment>`, you could call `.Add(new UpiPayment(...))` on it and put a UPI payment into a list that's supposed to hold only card payments.
 
@@ -1542,7 +1557,18 @@ Array covariance: ArrayTypeMismatchException
 - **Expecting `List<Derived>` to convert to `List<Base>`.** It never will. Accept `IEnumerable<Base>` or `IReadOnlyList<Base>` as the parameter type instead, and callers can pass their `List<Derived>`.
 - **Array covariance.** `Payment[] batch = new CardPayment[2];` compiles (a design decision from C#'s first version, copied from Java). Writing a `UpiPayment` into it fails at **runtime** with `ArrayTypeMismatchException`. Every write into an array of a non-sealed reference type also pays for a hidden runtime type check.
 - **Expecting variance with value types.** `IEnumerable<int>` → `IEnumerable<object>` doesn't work; use `.Cast<object>()` (which boxes).
-- **Trying to put `out T` on an interface that also takes `T` as a parameter.** That's a compile error, and the compiler is right: it wouldn't be safe.
+- **Trying to put `out T` on an interface that also takes `T` as a parameter.** That's a compile error, and the compiler is right: it wouldn't be safe. Verified on .NET 10:
+
+  ```csharp
+  public interface IPaymentQueue<out T>
+  {
+      T Next();             // OK: T comes out
+      void Enqueue(T item); // error CS1961: Invalid variance: The type parameter 'T' must be
+                            // contravariantly valid on 'IPaymentQueue<T>.Enqueue(T)'. 'T' is covariant.
+  }
+  ```
+
+  If this compiled, an `IPaymentQueue<CardPayment>` could be used as an `IPaymentQueue<Payment>`, and `Enqueue(new UpiPayment(...))` would put a UPI payment into a card-payment queue. The same applies in reverse: an `in T` can't appear as a return type.
 
 ### 5-YOE depth
 
@@ -1564,7 +1590,7 @@ Array covariance: ArrayTypeMismatchException
 3. **What is array covariance and why is it considered a mistake?**
    `object[] arr = new string[1];` compiles, but `arr[0] = 5;` throws `ArrayTypeMismatchException` at runtime. It moves a compile-time error to runtime and adds a type check to every array write.
 4. **Does `IEnumerable<int>` convert to `IEnumerable<object>`?**
-   No. Variance only applies to reference types, because a conversion that needs boxing can't happen without copying.
+   No. Variance only applies when there's a reference conversion between the type arguments. `int` → `object` is a boxing conversion, not a reference conversion, so it doesn't qualify. Use `.Cast<object>()` if you really need it (it boxes each item).
 5. **Name some built-in variant interfaces or delegates.**
    `IEnumerable<out T>`, `IReadOnlyList<out T>`, `IQueryable<out T>`, `IComparer<in T>`, `IEqualityComparer<in T>`, `Action<in T>`, `Func<in T, out TResult>`.
 
@@ -2019,7 +2045,7 @@ Base chain of TaskCanceledException: TaskCanceledException -> OperationCanceledE
 
 - **`finally` doesn't always run (runtime behaviour):** not on `Environment.FailFast`, a killed process, a `StackOverflowException` (which can't be caught at all), or a power cut. Don't rely on `finally` for things that must happen, like committing money. Use transactions and idempotency (Chapter 15).
 - **Unhandled exceptions:** in a console app or on a background thread, an unhandled exception **terminates the process**. In ASP.NET Core, the server catches exceptions from a request and returns a 500, so the app survives. But an exception in a `BackgroundService.ExecuteAsync` stops the host by default since .NET 6 (`BackgroundServiceExceptionBehavior.StopHost`), Chapter 19.
-- **`TaskCanceledException` derives from `OperationCanceledException`**, so always catch `OperationCanceledException`. `HttpClient` throws `TaskCanceledException` both for real cancellations and for **timeouts**. Check `cancellationToken.IsCancellationRequested` to tell them apart (Chapter 20).
+- **`TaskCanceledException` derives from `OperationCanceledException`**, so catching the base type `OperationCanceledException` handles both. Catch the specific `TaskCanceledException` only when that distinction actually matters to you. `HttpClient` throws `TaskCanceledException` both for real cancellations and for **timeouts**. Check `cancellationToken.IsCancellationRequested` to tell them apart (Chapter 20).
 - **`AggregateException`** wraps several exceptions (from `Task.WaitAll`, `Parallel.For`, `.Result`). `await` unwraps the first one. Chapter 5.
 - **Throw helpers and inlining:** the `ThrowIfNull`-style helpers keep the `throw` in a separate method, so the calling method stays small enough for the JIT to inline. That's why the .NET libraries use them (*runtime behaviour*).
 - **`ApplicationException`:** an old base class that Microsoft's own guidance now says **not** to use. Derive custom exceptions directly from `Exception` (topic 10).
@@ -2059,7 +2085,7 @@ An **exception filter** is a condition on a catch block: `catch (HttpRequestExce
 
 1. Derive from `Exception` (not `ApplicationException`).
 2. End the name with `Exception`.
-3. Provide the three standard constructors: `()`, `(string message)`, `(string message, Exception inner)`. Add your own constructor that takes the domain data.
+3. Provide the three standard constructors: `()`, `(string message)`, `(string message, Exception inner)`. Add your own constructor that takes the domain data. (This is a **convention** from the .NET design guidelines and analyzer CA1032, not a compiler requirement. The compiler accepts an exception class with any constructors.)
 4. Add **read-only properties** for the data callers need.
 5. Create one only when callers will **catch it specifically** or need its data. Otherwise, a built-in type is fine (`ArgumentException`, `InvalidOperationException`).
 
@@ -3207,11 +3233,11 @@ public static class T14_LoggingExceptions
 
 **Interfaces**
 - `IEnumerable<T>` (loop) → `ICollection<T>` (Count/Add/Remove) → `IList<T>` (index). The read-only family: `IReadOnlyCollection<T>` → `IReadOnlyList<T>`. `IList<T>` doesn't inherit `IReadOnlyList<T>`.
-- Accept the smallest interface you need; return `IReadOnlyList<T>`. Never expose an internal `List<T>`; use `AsReadOnly()` for real protection.
+- Accept the smallest interface you need; return `IReadOnlyList<T>`. Never expose an internal `List<T>`; `AsReadOnly()` blocks casting back (a read-only wrapper, still showing the owner's changes); a copy or immutable/frozen collection gives data that can never change.
 - Lazy `IEnumerable` runs again on every enumeration, so `ToList()` once. Read-only ≠ immutable.
 
 **Big-O and memory**
-- `List.Contains` inside a loop = O(n²); build a `HashSet`/`Dictionary` (measured: ~240× faster for 20k lookups).
+- `List.Contains` inside a loop = O(n²); build a `HashSet`/`Dictionary` (one measured run: ~240× faster for 20k lookups; the ratio depends on data size, machine and .NET version).
 - Hash collections use ~4–5× the memory of an array for ints (measured). Linked structures allocate one object per item. Small n: a scan may win, so measure with BenchmarkDotNet.
 
 **Generics**
@@ -3231,10 +3257,10 @@ public static class T14_LoggingExceptions
 **Exceptions**
 - All derive from `Exception`. Catch most specific first (CS0160 otherwise). `finally` runs on return and on throw, but not on FailFast, process kill or stack overflow.
 - An exception thrown in `finally` replaces the original. Wrap with `InnerException` to add context. Guard clauses: `ThrowIfNull` (.NET 6), `ThrowIfNegative` (.NET 8).
-- Catch `OperationCanceledException`, not `TaskCanceledException`.
+- `TaskCanceledException` derives from `OperationCanceledException`, so catching `OperationCanceledException` handles both. Use the specific type only when the distinction matters.
 
 **Custom exceptions and filters**
-- Derive from `Exception`, name ends in `Exception`, 3 standard constructors + typed properties; no serialization constructor (obsolete, SYSLIB0051).
+- Derive from `Exception`, name ends in `Exception`, 3 standard constructors (convention, CA1032) + typed properties; no serialization constructor (obsolete, SYSLIB0051).
 - `catch (X ex) when (cond)`: evaluated **before** unwinding, so the filter runs before inner `finally` blocks. A false filter = the catch doesn't exist. An exception inside a filter = false.
 
 **throw vs throw ex**
@@ -3243,7 +3269,7 @@ public static class T14_LoggingExceptions
 
 **Result vs exceptions**
 - Expected business outcomes → Result / `Try...` / validation errors. Bugs and infrastructure failures → exceptions → global handler.
-- Throwing is expensive (measured: ~30× slower than returning a result, ~2 µs per throw). Results can be ignored by mistake, so use stable error codes and map them to 404/409/422.
+- Throwing is expensive (one measured run on .NET 10, Debug: ~30× slower than returning a result, ~2 µs per throw; not a fixed ratio). Results can be ignored by mistake, so use stable error codes and map them to 404/409/422.
 
 **IDisposable**
 - The GC frees memory only; `Dispose` releases files, connections and sockets deterministically. `using` = `try/finally`; several usings dispose in reverse order.
@@ -3251,6 +3277,6 @@ public static class T14_LoggingExceptions
 - Dispose must be idempotent; afterwards members throw `ObjectDisposedException`. Don't dispose DI-injected objects. Don't create and dispose an `HttpClient` per request.
 
 **Logging exceptions**
-- Handle it, wrap it, or let it go up. Log **once** at the boundary (exception middleware / worker loop).
+- Handle it, wrap it, or let it go up. An unhandled failure is logged at Error **once**, at the boundary (exception middleware / worker loop). A layer that genuinely **handles** a failure (retry, fallback) also logs it there, usually at Warning.
 - `logger.LogError(ex, "Checkout failed for order {OrderId}", orderId)`: exception first, message template, no interpolation, no `ex.Message` alone.
 - Never swallow silently. Cancellation isn't an error. No secrets in logs. Use a TraceId, scopes and `[LoggerMessage]` for hot paths.
