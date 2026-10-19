@@ -20,7 +20,7 @@ A self-contained course that takes you from zero to **interview-ready at 5-years
 |---|---|---|---|
 | | **Phase 1 — C# fundamentals and runtime** | | |
 | 1 | [C# fundamentals and OOP](chapters/01-csharp-fundamentals-oop/notes.md) | 1–3 | Ready to study · quiz not taken |
-| 2 | [Collections, generics and exceptions](chapters/02-collections-generics-exceptions/notes.md) | 4–6 | Not started |
+| 2 | [Collections, generics and exceptions](chapters/02-collections-generics-exceptions/notes.md) | 4–6 | Ready to study · quiz not taken |
 | 3 | [LINQ, delegates and advanced C#](chapters/03-linq-delegates-advanced-csharp/notes.md) | 7–8 | Not started |
 | 4 | [.NET runtime and memory management](chapters/04-dotnet-runtime-memory/notes.md) | 9–10 | Not started |
 | 5 | [Async/await, threading and concurrency](chapters/05-async-threading-concurrency/notes.md) | 11–13 | Not started |
