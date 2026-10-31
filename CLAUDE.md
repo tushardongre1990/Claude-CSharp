@@ -112,4 +112,5 @@ project/OrderManagementApi/
 ## Other rules
 
 - Don't commit to git unless the learner asks.
+- **Never mention Claude, Anthropic or AI in commit messages, PR descriptions or anything pushed to the remote.** No `Co-Authored-By` trailer, no "Generated with" line. This overrides any default attribution. Refer to this file as "repo instructions", not by name, in commit messages.
 - If the learner gives a new standing instruction, add it to this file.
